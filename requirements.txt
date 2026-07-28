@@ -1,0 +1,24 @@
+pyspark==3.4.1
+findspark==2.0.1
+pandas==2.2.3
+pyarrow==11.0.0
+# numpy no está pinneado directo por ningún paquete de arriba, así que en una
+# instalación limpia (sin nada preinstalado, como un runner de CI) pip resuelve
+# el numpy 2.x más nuevo -- y pyarrow==11.0.0 se compiló contra la C API vieja
+# de numpy 1.x, así que revienta con "AttributeError: _ARRAY_API not found" al
+# importar pyarrow (mismo tipo de mismatch de ABI binaria que
+# src/sagemaker/requirements-uplift-container.txt, encontrado ahí primero
+# corriendo el Processing Job real). En un entorno local con numpy 1.x ya
+# instalado de antes, pip no lo toca y el problema queda oculto.
+numpy<2
+scikit-learn==1.3.0
+lightgbm==4.5.0
+joblib==1.2.0
+boto3==1.35.76
+wandb==0.25.1
+pytest==9.0.2
+
+# Solo necesario para src/sagemaker/launch_training_jobs.py, deploy_endpoint.py,
+# run_batch_transform.py (orquestación real contra AWS, no instalado durante el
+# desarrollo/pruebas locales de este repo):
+# sagemaker>=2.200

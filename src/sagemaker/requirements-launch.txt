@@ -1,0 +1,15 @@
+# Entorno AISLADO para lanzar jobs de SageMaker (launch_training_jobs.py,
+# launch_uplift_processing_job.py, deploy_endpoint.py, run_batch_transform.py).
+#
+# Estos scripts NO necesitan causalml/numpy/pandas/scikit-learn para sí mismos --
+# solo llaman a la API de SageMaker/boto3. Se separan de JCenv-uplift a propósito:
+# `pip install sagemaker` (v3, la versión "latest" por default) trae un árbol de
+# dependencias enorme y no relacionado (torch, mlflow, onnx, docker...) y además
+# reestructuró `sagemaker.processing` de forma incompatible con la API v2.x que
+# usa el resto de estos scripts -- se fija a la línea v2.x explícitamente.
+#
+#   conda create -n JCenv-sagemaker-launch python=3.11 -y
+#   conda activate JCenv-sagemaker-launch
+#   pip install -r src/sagemaker/requirements-launch.txt
+sagemaker>=2.219,<3
+boto3
