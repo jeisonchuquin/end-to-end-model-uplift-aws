@@ -27,6 +27,6 @@ provider "aws" {
 
 data "aws_caller_identity" "current" {}
 
-locals {  
+locals {
   project_slug = replace(var.project_name, "-", "_")
 }
