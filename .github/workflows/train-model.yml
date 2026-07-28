@@ -1,0 +1,78 @@
+name: Train and score uplift model
+
+# Lanza el T-learner de uplift (SageMaker Processing Job) y puntúa la población
+# solo_virtual cuando cambia el código de entrenamiento/scoring, o a mano
+# (workflow_dispatch). Va detrás del Environment "aws-training", que se
+# configura con un revisor obligatorio en Settings > Environments del repo --
+# cada corrida real (~$0.02-0.05 de cómputo + minutos de instancia) queda
+# pausada hasta que alguien la aprueba, en vez de dispararse sola en cada push.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/sagemaker/train_uplift.py"
+      - "src/sagemaker/score_uplift.py"
+      - "src/sagemaker/run_train_uplift_job.sh"
+      - "src/sagemaker/run_score_uplift_job.sh"
+      - "src/sagemaker/requirements-uplift-container.txt"
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  train-and-score:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: aws-training
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      S3_BUCKET: ${{ vars.S3_BUCKET }}
+      SAGEMAKER_ROLE_ARN: ${{ vars.SAGEMAKER_ROLE_ARN }}
+      DYNAMODB_TABLE: ${{ vars.DYNAMODB_TABLE }}
+      UPLIFT_API_ENDPOINT: ${{ vars.UPLIFT_API_ENDPOINT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r src/sagemaker/requirements-launch.txt
+
+      - name: Entrenar T-learner (SageMaker Processing Job)
+        env:
+          WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }} # opcional -- vacío = corre con --no-wandb
+        run: |
+          python src/sagemaker/launch_uplift_processing_job.py \
+            --bucket "$S3_BUCKET" \
+            --role-arn "$SAGEMAKER_ROLE_ARN"
+
+      - name: Puntuar solo_virtual y escribir en S3 + DynamoDB
+        run: |
+          python src/sagemaker/launch_score_uplift_processing_job.py \
+            --bucket "$S3_BUCKET" \
+            --role-arn "$SAGEMAKER_ROLE_ARN" \
+            --dynamodb-table "$DYNAMODB_TABLE"
+
+      - name: Smoke test de la API con un cliente real recién puntuado
+        run: |
+          CLIENTE_ID=$(aws dynamodb scan --table-name "$DYNAMODB_TABLE" --limit 1 \
+            --query 'Items[0].cliente_id.S' --output text)
+          echo "Probando con cliente_id=$CLIENTE_ID"
+          HTTP_STATUS=$(curl -s -o /tmp/respuesta.json -w '%{http_code}' \
+            "${UPLIFT_API_ENDPOINT}/clientes/${CLIENTE_ID}/uplift")
+          cat /tmp/respuesta.json
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::error::La API respondió $HTTP_STATUS en vez de 200"
+            exit 1
+          fi

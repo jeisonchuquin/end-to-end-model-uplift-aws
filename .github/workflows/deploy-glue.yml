@@ -1,0 +1,87 @@
+name: Deploy Glue jobs
+
+# Cuando cambia el código de los Glue Jobs (o utils/, del que dependen vía
+# --extra-py-files) en push a main: sincroniza los scripts a S3 y dispara una
+# corrida real del Glue Workflow para verificar que el cambio funciona end-to-end
+# contra los datos reales.
+#
+# Deliberadamente NO corre `terraform apply`: los cambios de recursos de
+# infraestructura (infra/*.tf) se aplican a mano (ver README) -- este workflow
+# solo actualiza el contenido de los 2 scripts .py y el zip de utils/ en las
+# mismas rutas S3 que Terraform ya administra, con un rol de IAM acotado
+# exactamente a eso (ver infra/github_actions.tf).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/glue_jobs/**"
+      - "utils/**"
+
+permissions:
+  id-token: write # requerido por aws-actions/configure-aws-credentials (OIDC)
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  deploy-and-run:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      S3_BUCKET: ${{ vars.S3_BUCKET }}
+      GLUE_WORKFLOW_NAME: ${{ vars.GLUE_WORKFLOW_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Subir scripts de los Glue Jobs
+        run: |
+          aws s3 cp src/glue_jobs/01_standardize.py "s3://${S3_BUCKET}/scripts/01_standardize.py"
+          aws s3 cp src/glue_jobs/02_enrich_curated.py "s3://${S3_BUCKET}/scripts/02_enrich_curated.py"
+
+      - name: Empaquetar y subir utils/ (--extra-py-files)
+        run: |
+          cd utils
+          zip -r ../utils.zip normalizacion.py fechas.py spark_bootstrap.py __init__.py -x "__pycache__/*"
+          cd ..
+          aws s3 cp utils.zip "s3://${S3_BUCKET}/scripts/dependencies/utils.zip"
+
+      - name: Disparar el Glue Workflow
+        id: start
+        run: |
+          RUN_ID=$(aws glue start-workflow-run --name "$GLUE_WORKFLOW_NAME" --query 'RunId' --output text)
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "Workflow run: $RUN_ID"
+
+      - name: Esperar a que termine y verificar el resultado
+        run: |
+          RUN_ID="${{ steps.start.outputs.run_id }}"
+          for i in $(seq 1 60); do
+            STATUS=$(aws glue get-workflow-run --name "$GLUE_WORKFLOW_NAME" --run-id "$RUN_ID" --query 'Run.Status' --output text)
+            if [ "$STATUS" != "RUNNING" ]; then
+              break
+            fi
+            sleep 15
+          done
+
+          echo "Estado final: $STATUS"
+          aws glue get-workflow-run --name "$GLUE_WORKFLOW_NAME" --run-id "$RUN_ID" \
+            --query 'Run.Statistics' --output json
+
+          if [ "$STATUS" != "COMPLETED" ]; then
+            echo "::error::El Glue Workflow terminó en estado $STATUS"
+            exit 1
+          fi
+
+          FAILED=$(aws glue get-workflow-run --name "$GLUE_WORKFLOW_NAME" --run-id "$RUN_ID" \
+            --query 'Run.Statistics.FailedActions' --output text)
+          if [ "$FAILED" != "0" ]; then
+            echo "::error::$FAILED acción(es) del workflow fallaron -- ver Run.Statistics arriba"
+            exit 1
+          fi

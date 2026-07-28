@@ -54,12 +54,12 @@ def main():
             input_name="src",
         ),
         ProcessingInput(
-            source=f"s3://{args.bucket}/curated/cliente_360",
+            source=f"s3://{args.bucket}/data/curated/cliente_360",
             destination="/opt/ml/processing/input/cliente_360",
             input_name="cliente_360",
         ),
         ProcessingInput(
-            source=f"s3://{args.bucket}/processed/transacciones",
+            source=f"s3://{args.bucket}/data/processed/transacciones",
             destination="/opt/ml/processing/input/transacciones",
             input_name="transacciones",
         ),

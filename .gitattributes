@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.docx binary
+*.parquet binary
+*.joblib binary
+*.zip binary
+*.pyc binary

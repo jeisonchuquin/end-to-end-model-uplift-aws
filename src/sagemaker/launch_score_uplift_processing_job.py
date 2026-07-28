@@ -69,7 +69,7 @@ def main():
             input_name="src",
         ),
         ProcessingInput(
-            source=f"s3://{args.bucket}/curated/cliente_360",
+            source=f"s3://{args.bucket}/data/curated/cliente_360",
             destination="/opt/ml/processing/input/cliente_360",
             input_name="cliente_360",
         ),
@@ -82,7 +82,7 @@ def main():
     outputs = [
         ProcessingOutput(
             source="/opt/ml/processing/output/predictions",
-            destination=f"s3://{args.bucket}/predictions/uplift_scores/dt={fecha}/",
+            destination=f"s3://{args.bucket}/data/predictions/uplift_scores/dt={fecha}/",
             output_name="predicciones",
         ),
     ]
@@ -104,7 +104,7 @@ def main():
     )
 
     print(f"\nProcessing Job completo. Predicciones en "
-          f"s3://{args.bucket}/predictions/uplift_scores/dt={fecha}/")
+          f"s3://{args.bucket}/data/predictions/uplift_scores/dt={fecha}/")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,52 @@
+name: CI
+
+# Corre en cada push y PR, a cualquier rama, no toca AWS, ni credenciales, ni
+# secretos. Valida que el código Python compile/pasa sus tests y que el
+# Terraform de infra/ sea sintácticamente válido antes de que cualquier otro
+# workflow intente usarlo contra AWS real.
+on:
+  push:
+  pull_request:
+  workflow_call: # para que deploy-glue.yml/train-model.yml puedan exigir "tests en verde" antes de tocar AWS
+
+permissions:
+  contents: read
+
+jobs:
+  test-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17" # pyspark (test/conftest.py) necesita JVM
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - run: pytest test/ -v
+
+  validate-terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.14.3"
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive
+        working-directory: infra
+
+      - name: terraform validate
+        working-directory: infra
+        run: |
+          terraform init -backend=false
+          terraform validate
