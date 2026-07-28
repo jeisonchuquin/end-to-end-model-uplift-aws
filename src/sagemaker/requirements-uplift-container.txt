@@ -1,0 +1,17 @@
+# Instalado DENTRO del contenedor SKLearn de SageMaker, en un venv limpio
+# (ver run_train_uplift_job.sh) -- Python 3.9. NO es el mismo archivo que
+# requirements-uplift.txt (ese es para desarrollo local en JCenv-uplift,
+# Python 3.11). El venv arranca vacío (no hereda los paquetes preinstalados del
+# contenedor a propósito, para evitar mismatches de ABI binaria con lo ya
+# cargado -- ver comentario en run_train_uplift_job.sh), así que hay que listar
+# todo lo que train_uplift.py importa explícitamente, no solo causalml.
+#
+# causalml>=0.16 requiere Python >=3.11 (descubierto corriendo el Processing Job
+# real). Sin pin de versión exacta: se deja que pip resuelva un set mutuamente
+# consistente para Python 3.9 -- los pines de requirements-uplift.txt fueron
+# resueltos contra Python 3.11 y no aplican acá.
+causalml<0.16
+pandas
+pyarrow
+joblib
+wandb
